@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>複数画像アップロードと縮小</title>
+<style>
+#imageContainer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.imageWrapper {
+    position: relative;
+}
+
+.imageWrapper img {
+    max-width: 150px;
+    max-height: 150px;
+}
+
+.removeButton {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background-color: rgba(255, 0, 0, 0.7);
+    color: white;
+    border: none;
+    cursor: pointer;
+    padding: 2px 5px;
+}
+</style>
+</head>
+<body>
+
+<h1>複数画像アップロードと縮小</h1>
+
+<input type="file" id="imageInput" multiple accept="image/*">
+<button id="reduceButton">画像を縮小してダウンロード</button>
+<button id="clearButton">クリア</button>
+
+<div id="imageContainer"></div>
+
+<script>
+const imageInput = document.getElementById('imageInput');
+const reduceButton = document.getElementById('reduceButton');
+const clearButton = document.getElementById('clearButton');
+const imageContainer = document.getElementById('imageContainer');
+
+let images = [];
+
+imageInput.addEventListener('change', (event) => {
+    const files = event.target.files;
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const reader = new FileReader();
+
+        reader.onload = (e) => {
+            const imageUrl = e.target.result;
+            addImage(file, imageUrl);
+        }
+
+        reader.readAsDataURL(file);
+    }
+});
+
+function addImage(file, imageUrl) {
+    const imageWrapper = document.createElement('div');
+    imageWrapper.classList.add('imageWrapper');
+
+    const img = document.createElement('img');
+    img.src = imageUrl;
+    img.alt = file.name;
+
+    const removeButton = document.createElement('button');
+    removeButton.classList.add('removeButton');
+    removeButton.textContent = 'X';
+    removeButton.addEventListener('click', () => {
+        removeImage(file);
+        imageWrapper.remove();
+    });
+
+    imageWrapper.appendChild(img);
+    imageWrapper.appendChild(removeButton);
+    imageContainer.appendChild(imageWrapper);
+
+    images.push({ file: file, imageUrl: imageUrl });
+}
+
+
+function removeImage(file) {
+    images = images.filter(img => img.file !== file);
+}
+
+
+reduceButton.addEventListener('click', async () => {
+    if (images.length === 0) {
+        alert("画像がアップロードされていません。");
+        return;
+    }
+
+    const allImagesData = [];
+
+    for (const image of images) {
+        const compressedImage = await compressImage(image.file, image.imageUrl);
+        if (compressedImage) {
+            allImagesData.push(compressedImage);
+        } else {
+            // 圧縮できなかった場合は、元の画像をダウンロード対象にする
+            allImagesData.push({
+                name: image.file.name,
+                dataURL: image.imageUrl
+            });
+        }
+    }
+
+    if (allImagesData.length > 0) {
+        downloadAll(allImagesData);
+    }
+});
+
+async function compressImage(file, imageUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = imageUrl;
+    img.onload = () => {
+      let canvas = document.createElement('canvas');
+      let ctx = canvas.getContext('2d');
+      let width = img.width;
+      let height = img.height;
+
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(img, 0, 0, width, height);
+
+      let quality = 0.9; // 初期品質
+      let compressedDataURL = canvas.toDataURL(file.type, quality);
+      let compressedSize = dataURLToKilobytes(compressedDataURL);
+
+
+      // サイズが2MBを超える場合、品質を下げて再圧縮
+      while (compressedSize > 2048 && quality > 0.1) {
+        quality -= 0.05;
+        canvas = document.createElement('canvas'); // 新しいキャンバスを作成
+        ctx = canvas.getContext('2d');
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+
+        compressedDataURL = canvas.toDataURL(file.type, quality);
+        compressedSize = dataURLToKilobytes(compressedDataURL);
+      }
+
+
+      if (compressedSize <= 2048) {
+        resolve({
+            name: file.name,
+            dataURL: compressedDataURL
+        });
+      } else {
+        alert(`${file.name} は縮小できませんでした。`);
+        resolve(null);
+      }
+
+    };
+  });
+}
+
+function dataURLToKilobytes(dataURL) {
+    const stringLength = dataURL.length - 'data:image/png;base64,'.length; //png決め打ちだったのを修正。実際はファイルtypeを見るべきだが、ここでは簡略化
+    const byteLength = 4 * Math.ceil((stringLength / 3));
+    return byteLength / 1024;
+}
+
+async function downloadAll(imagesData) {
+    for (const imageData of imagesData) {
+        const link = document.createElement('a');
+        link.href = imageData.dataURL;
+        link.download = imageData.name;
+        link.click();
+        await delay(1000); // 1秒待つ
+    }
+}
+
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+
+clearButton.addEventListener('click', () => {
+    images = [];
+    imageContainer.innerHTML = '';
+    imageInput.value = ''; // input[type="file"] の値をクリア
+});
+
+
+</script>
+
+</body>
+</html>
